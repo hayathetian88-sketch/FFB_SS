@@ -1,0 +1,96 @@
+      SUBROUTINE STOSFR(N2,NE,NP,NPSET,NODE,
+     *                  NBESET,LBESET,NPOSFR,
+     *                  LOSFR0,LOSFR1,LOSFR2,LOSFR3,
+     *                  LWORK1,LWORK2)
+      IMPLICIT NONE
+C
+CCC [INPUT]
+      INTEGER*4 N2,NE,NP,NODE(N2,NE),NPSET,
+     *          NBESET,LBESET(2,NBESET)
+C
+CCC [OUTPUT]
+      INTEGER*4 NPOSFR,LOSFR0(NPSET),
+     *          LOSFR1(8,NPSET),LOSFR2(8,NPSET),LOSFR3(8,NPSET)
+C
+CCC [WORK]
+      INTEGER*4 LWORK1(NP),LWORK2(NP)
+C     
+C     FUNCTION: SET OVERSET NODES LIST WHICH HAVE FREE SURFACES
+C
+C     WRITTEN BY Y.YAMADE 2020.05.14
+C
+C     ARGUMENT LISTINGS
+C (1) INPUT
+C N2              : THE DIMENSION SIZE OF THE FIRST ELEMENTS OF THE (=8)
+C NE              : NUMBER OF ELEMENTS
+C NP              : NUMBER OF NODES
+C NPSET           : NUMBER OF OVERSET BOUNDARY NODES
+C NODE(I,IE)      : NODE TABLE
+C NBESET          : NUMBER OF FREE SURFACES
+C LBESET(2,NBESET): ELEM. NUM.(1) AND LOCAL SURF. NUM.(2) OF FREE SURFACES
+C
+C (2) OUTPUT
+C NOOSFR          : NUMBER OF OVERSET NODES WHICH HAVE FREE SURFACES
+C LOSFR0(  NPSET) : OVERSET NODE NUMBER WHICH  HAVE FREE SURFACES
+C LOSFR1(8,NPSET) : FREE SURFACE NUMBER ADJACENT TO THE OVERSET NODE
+C NOTE THAT MAX. NUMBER OF ADJACENT NODES IS ASSUMED TO BE 8
+C LOSFR2(8,NPSET) : ELEMENT NUMBER ADJACENT TO THE FREE SURFACE
+C LOSFR3(8,NPSET) : LOCAL NODE NUMBER IN THE FREE SURFACE
+C
+      INTEGER*4 IP,IPB,I,IBE,IE,IS,IETYPE,IPL
+      INTEGER*4 LOCALT(4,6,4)
+      DATA LOCALT /
+     *     1,2,4,0,  2,3,4,0,  3,1,4,0,  1,3,2,0,  0,0,0,0,  0,0,0,0, ! TET
+     *     1,2,5,0,  2,3,5,0,  3,4,5,0,  4,1,5,0,  1,4,3,2,  0,0,0,0, ! PYR
+     *     1,3,2,0,  4,5,6,0,  1,2,5,4,  2,3,6,5,  3,1,4,6,  0,0,0,0, ! PRS
+     *     1,5,8,4,  2,3,7,6,  1,2,6,5,  3,4,8,7,  1,4,3,2,  5,6,7,8  ! HEX
+     *           /
+C
+      DO 1000 IP=1,NP
+          LWORK1(IP)=0
+          LWORK2(IP)=0
+ 1000 CONTINUE
+C
+      NPOSFR=0
+      DO 1100 IPB=1,NPSET
+          LOSFR0(IPB)=0
+          DO I=1,8
+              LOSFR1(I,IPB)=1
+              LOSFR2(I,IPB)=NE+1
+              LOSFR3(I,IPB)=1
+          ENDDO
+ 1100 CONTINUE
+C
+       DO 2000 IBE=1,NBESET
+           IE=LBESET(1,IBE)
+           IS=LBESET(2,IBE)
+C
+           IF(     NODE(8,IE).GE.1) THEN ! HEX
+               IETYPE = 4
+           ELSE IF(NODE(6,IE).GE.1) THEN ! PRS
+               IETYPE = 3
+           ELSE IF(NODE(5,IE).GE.1) THEN ! PYR
+               IETYPE = 2
+           ELSE                          ! TET
+               IETYPE = 1
+           ENDIF   
+C
+           DO 2100 I=1,4
+               IPL= LOCALT(I,IS,IETYPE)
+               IF(IPL.EQ.0) GOTO 2100
+               IP = NODE(IPL,IE)
+               IF(IP.EQ.0) GOTO 2100
+               IF(LWORK1(IP).EQ.0) THEN
+                  NPOSFR=NPOSFR+1
+                  LWORK1(IP)=NPOSFR 
+                  LOSFR0(LWORK1(IP))=IP
+               ENDIF
+               LWORK2(IP)=LWORK2(IP)+1
+               LOSFR1(LWORK2(IP),LWORK1(IP))=IBE
+               LOSFR2(LWORK2(IP),LWORK1(IP))=IE
+               LOSFR3(LWORK2(IP),LWORK1(IP))=IPL
+ 2100     CONTINUE
+ 2000 CONTINUE
+C
+      RETURN
+      END

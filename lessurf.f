@@ -1,0 +1,126 @@
+      SUBROUTINE LESSURF(NE,NP,N1,NEX,NS,NSP,N2D,
+     *                   LOCAL,NODE,IPART,
+     *                   X,Y,Z,
+     *                   NAMEBC,MPFREE,NPFREE,NEFREE,
+     *                   LPFREE,LEFREE,
+     *                   XPFREE,YPFREE,ZPFREE,
+     *                   XNFREE,YNFREE,ZNFREE,AEFREE,
+     *                   MDOM,NDOM,LDOM,
+     *                   NBPDOM,MBPDOM,IPSLF,IPSND,
+     *                   MWRK,IWRK,
+     *                   WRK4,WRK5,WRK6,
+     *                   RX,RY,MAXBUF,
+     *                   IUT0,IUT6,IERR)
+      IMPLICIT NONE
+      CHARACTER(4) :: NAMEBC
+      INTEGER*4 NE,NP,N1,NEX,NS,NSP,N2D
+      INTEGER*4 LOCAL(NSP,NS,4),NODE(N1,NE)
+      INTEGER*4 IPART
+      REAL(8):: X(NP),Y(NP),Z(NP)
+      ! BC
+      INTEGER(4)::MPFREE,NPFREE,NEFREE
+      INTEGER(4)::LPFREE(NPFREE),LEFREE(2,MPFREE)
+      REAL(4),dimension(MPFREE)::XPFREE,YPFREE,ZPFREE,
+     *                           XNFREE,YNFREE,ZNFREE,AEFREE
+      ! COMMUNICATOR
+      INTEGER(4)::MDOM,NDOM,MBPDOM
+      INTEGER(4)::LDOM(MDOM),NBPDOM(MDOM),
+     *            IPSLF(MBPDOM,MDOM),IPSND(MBPDOM,MDOM)
+      ! WORK
+      INTEGER(4)::MWRK,IWRK(MWRK)
+      REAL(4) :: WRK4(NP),WRK5(NP),WRK6(NP)
+      REAL(4) :: RX(0:N1,NE),RY(0:N1,NE)
+      INTEGER(4)::MAXBUF
+      ! IO
+      INTEGER*4 IUT0,IUT6,IERR,IERRA
+      ! TMP
+      INTEGER*4 MLST,IP,IEFREE,IE,IS,IETYPE,NNPS,I,IDIM,IPFREE
+      REAL*4    EPS, ABSNOR
+      DATA      EPS  /1.0E-10/
+      CHARACTER*60 ERMSGC
+     & / ' ## SUBROUTINE LESSURF: FATAL    ERROR REPORT   ; RETURNED' /
+      WRITE(IUT6,*)
+      WRITE(IUT6,*) ' LESSRF: EXTRACTING '//
+     *              trim(NAMEBC)//' SURFACES,'
+      WRITE(IUT6,*) '        CALCULATING '//
+     *              trim(NAMEBC)//' SURFACE NORMALS AND'
+      WRITE(IUT6,*) '        ASSIGNING '//
+     *              trim(NAMEBC)//' NORMAL TO '//trim(NAMEBC)//' NODE'
+C
+      MLST   = 2
+      CALL SRFEXX(MPFREE,MLST,NE,NP,N1,NEX,NS,NSP,N2D,
+     *            LPFREE,NPFREE,LOCAL,NODE,
+     *            LEFREE,NEFREE,MWRK,IWRK,IUT0,IERR)
+      CALL ERRCHK(IUT6,IPART,1,IERR,IERRA)
+      IF(IERRA.NE.0) THEN
+          WRITE(IUT0,*)
+          WRITE(IUT0,*) ERMSGC
+          RETURN
+      ENDIF
+C
+      CALL CSIN3X(LOCAL,X,Y,Z,NODE,NE,NP,N1,NEX,NS,NSP,
+     *            LEFREE,NEFREE,XNFREE,YNFREE,ZNFREE,AEFREE)
+C
+      DO 500 IP = 1 , NP
+          WRK4(IP) = 0.E0
+          WRK5(IP) = 0.E0
+          WRK6(IP) = 0.E0
+  500 CONTINUE
+C
+      DO 520 IEFREE = 1 , NEFREE
+          IE = LEFREE(1,IEFREE)
+          IS = LEFREE(2,IEFREE)
+          IF(     NODE(8,IE).GE.1) THEN ! HEX
+             IETYPE = 4
+          ELSE IF(NODE(6,IE).GE.1) THEN ! PRS
+             IETYPE = 3
+          ELSE IF(NODE(5,IE).GE.1) THEN ! PYR
+             IETYPE = 2
+          ELSE                          ! TET
+             IETYPE = 1
+          ENDIF   
+          IF(LOCAL(4,IS,IETYPE).GE.1) THEN ! QUADRILATERAL
+             NNPS = 4
+          ELSE                             ! TRIANGLE
+             NNPS = 3
+          ENDIF   
+          DO 510 I = 1 , NNPS
+              IP = NODE(LOCAL(I,IS,IETYPE),IE)
+              WRK4(IP) = WRK4(IP)+XNFREE(IEFREE)
+              WRK5(IP) = WRK5(IP)+YNFREE(IEFREE)
+              WRK6(IP) = WRK6(IP)+ZNFREE(IEFREE)
+  510     CONTINUE 
+  520 CONTINUE
+C
+C SUPERIMPOSE NEIGHBORING DOMAIN NORMAL VECTORS
+C
+C  NOTES; THIS PART MUST BE CALLED FOR ALL THE DOMAINS WHETHER OR NOT
+C        THEY HAVE A FREE NODE. A DOMAIN WHICH HAS NO FREE NODE MUST 
+C        ALSO SEND ITS ZERO (DUMMY) RESIDUALS TO ITS NEIGHBORING DOMAINS 
+C        OTHERWISE COMMUNICATION WILL BE LOCKED. IF AT LEAST ONE OF 
+C        THE NEIGHBORING DOMAIN POSSESSES A FREE SURFACE, A DOMAIN MAY 
+C        ALSO BE ASSIGNED A NORMAL VECTOR TO ITS FREE NODE (WHICH IS 
+C        ISOLATED IN THE DOMAIN) AFTER THE COMMUNICATION.
+C
+      IDIM = 3
+      CALL DDCOMX(IPART,IDIM,LDOM,NBPDOM,NDOM,
+     *            IPSLF,IPSND,MBPDOM,WRK4,WRK5,WRK6,NP,
+     *            IUT0,IERR,RX,RY,MAXBUF)
+      CALL ERRCHK(IUT6,IPART,1,IERR,IERRA)
+      IF(IERRA.NE.0) THEN
+          WRITE(IUT0,*)
+          WRITE(IUT0,*) ERMSGC
+          RETURN
+      ENDIF
+C
+      DO 530 IPFREE = 1 , NPFREE
+          IP = LPFREE(IPFREE)
+          ABSNOR = SQRT(WRK4(IP)**2+WRK5(IP)**2+WRK6(IP)**2+EPS)
+          XPFREE(IPFREE) = WRK4(IP)/ABSNOR
+          YPFREE(IPFREE) = WRK5(IP)/ABSNOR
+          ZPFREE(IPFREE) = WRK6(IP)/ABSNOR
+  530 CONTINUE
+C
+      WRITE(IUT6,*) ' DONE!'
+      WRITE(IUT6,*) '   NE'//trim(NAMEBC)//'=',NEFREE
+      END SUBROUTINE
