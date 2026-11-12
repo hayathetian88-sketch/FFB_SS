@@ -419,7 +419,12 @@ C         (SAME FORMULA AS [2], EVALUATED WITH UPDATED F)
      *             / (3.0E0*(1.0E0+ANUC-FLQ))
               RR   = ARGR**(0.33333333E0)
               GSS  = 3.0E0*RR*SQRT(2.0E0*ABS(DELTAP)*COEF1/3.0E0)
-              SOURCE = SIGN(1.0E0,DELTAP)*GSS*FLQ*(1.0E0+ANUC-FLQ)
+              IF(DELTAP.LT.0.0E0) THEN
+                  SOURCE = -GSS*MAX(FLQ-FLMIN,0.0E0)
+     *                     *(1.0E0+ANUC-FLQ)/(1.0E0-FLMIN)
+              ELSE
+                  SOURCE =  GSS*FLQ*(1.0E0+ANUC-FLQ)
+              ENDIF
           ENDIF
 C
           IF(DELTAP.GE.0.0E0 .AND. FE(IE).GE.FLIMIT) SOURCE=0.0E0
