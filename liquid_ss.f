@@ -191,7 +191,8 @@ C
               RR   = ARGR**(0.33333333E0)
               GSS  = 3.0E0*RR*SQRT(2.0E0*ABS(DELTAP)*COEF1/3.0E0)
               IF(DELTAP.LT.0.0E0) THEN
-                  SPSS = GSS*(1.0E0+ANUC-FLQ)
+                  SPSS = GSS*(1.0E0+ANUC-FLQ)/(1.0E0-FLMIN)
+                  SUSS = SPSS*FLMIN
               ELSE IF(FLQ.LT.FLIMIT) THEN
                   SUSS = GSS*FLQ*(1.0E0+ANUC)
                   SPSS = GSS*FLQ

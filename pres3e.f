@@ -640,6 +640,9 @@ C                 THE LIQUID-FRACTION EQ. (LIQUID_SS)
                   FESRC(IE)=FESRC(IE)
      *                     /SIGN(MAX(ABS(DELTAP),1.0E-3),DELTAP)
                   B(IE)=B(IE)+0.5E0*FESRC(IE)*SIGMA/DT
+C                 ADD IMPLICIT SOURCE K/DT TO JACOBI SCALING PG
+C                 (LAPLACIAN DIAGONAL IS -PG, SOURCE TERM IS -K/DT*P)
+                  IF(LEFIX(IE).NE.1) PG(IE)=PG(IE)+FESRC(IE)/DT
               ENDIF 
  1570     CONTINUE
           ELSEIF(NEWCAVI .EQ. 1)THEN
