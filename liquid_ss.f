@@ -77,8 +77,15 @@ C[LOCAL]
       REAL*4    FLQ,GSS,SUSS,SPSS,ADD
 C     SS MODEL PARAMETERS (LOCAL COPIES; DUMMY ARGS ARE NOT MODIFIED)
       REAL*4    ANB0,DIAM0
-      REAL*4    PI
+      REAL*4    PI,FLQMAX
       PARAMETER (PI=3.14159266E0)
+C     UPPER BOUND OF F USED IN SS SOURCE (SAME AS LIQUID.F: 0.999).
+C     (1+ANUC-F) >= 1.0E-3 ACTS AS AN EFFECTIVE NUCLEI VOID FRACTION
+C     AND LIMITS 1/R_B, WHICH STABILIZES CAVITATION INCEPTION.
+      PARAMETER (FLQMAX=0.999E0)
+C     REGULARIZATION OF SQRT(|DP|) NEAR DP=0 (NON-DIM. BY RHO*U*U)
+      REAL*4    EPSDP
+      PARAMETER (EPSDP=1.0E-2)
 
 C
       INTEGER*4 IBCGS
@@ -178,7 +185,7 @@ C
           ELSE
               FLQ = ( F(IP1)+F(IP2)+F(IP3)+F(IP4))/4.0E0
           ENDIF 
-          FLQ = MAX(0.0E0, MIN(1.0E0, FLQ))
+          FLQ = MAX(FLMIN, MIN(FLQMAX, FLQ))
 C
           SUSS = 0.0E0
           SPSS = 0.0E0
@@ -189,10 +196,12 @@ C
               ARGR = (4.0E0*PI*ANB0*FLQ)
      *             / (3.0E0*(1.0E0+ANUC-FLQ))
               RR   = ARGR**(0.33333333E0)
-              GSS  = 3.0E0*RR*SQRT(2.0E0*ABS(DELTAP)*COEF1/3.0E0)
+C             SMOOTHED SQRT (OPENFOAM-LIKE): SQRT(|DP|) -> |DP|/SQRT(|DP|+EPSDP)
+C             S IS THEN LINEAR IN DP NEAR DP=0 AND K=S/DP STAYS BOUNDED
+              GSS  = 3.0E0*RR*SQRT(2.0E0*COEF1/3.0E0)
+     *             * ABS(DELTAP)/SQRT(ABS(DELTAP)+EPSDP)
               IF(DELTAP.LT.0.0E0) THEN
-                  SPSS = GSS*(1.0E0+ANUC-FLQ)/(1.0E0-FLMIN)
-                  SUSS = SPSS*FLMIN
+                  SPSS = GSS*(1.0E0+ANUC-FLQ)
               ELSE IF(FLQ.LT.FLIMIT) THEN
                   SUSS = GSS*FLQ*(1.0E0+ANUC)
                   SPSS = GSS*FLQ
@@ -412,19 +421,17 @@ C         (SAME FORMULA AS [2], EVALUATED WITH UPDATED F)
           SOURCE = 0.0E0
           DELTAP = P(IE)+0.5E0*SIGMA
           IF(ICAVI.EQ.4) THEN
-              FLQ  = MAX(0.0E0, MIN(1.0E0, FE(IE)))
+              FLQ  = MAX(FLMIN, MIN(FLQMAX, FE(IE)))
               VNUC = (PI/6.0E0)*ANB0*DIAM0*DIAM0*DIAM0
               ANUC = VNUC/(1.0E0+VNUC)
               ARGR = (4.0E0*PI*ANB0*FLQ)
      *             / (3.0E0*(1.0E0+ANUC-FLQ))
               RR   = ARGR**(0.33333333E0)
-              GSS  = 3.0E0*RR*SQRT(2.0E0*ABS(DELTAP)*COEF1/3.0E0)
-              IF(DELTAP.LT.0.0E0) THEN
-                  SOURCE = -GSS*MAX(FLQ-FLMIN,0.0E0)
-     *                     *(1.0E0+ANUC-FLQ)/(1.0E0-FLMIN)
-              ELSE
-                  SOURCE =  GSS*FLQ*(1.0E0+ANUC-FLQ)
-              ENDIF
+C             SMOOTHED SQRT (OPENFOAM-LIKE): SQRT(|DP|) -> |DP|/SQRT(|DP|+EPSDP)
+C             S IS THEN LINEAR IN DP NEAR DP=0 AND K=S/DP STAYS BOUNDED
+              GSS  = 3.0E0*RR*SQRT(2.0E0*COEF1/3.0E0)
+     *             * ABS(DELTAP)/SQRT(ABS(DELTAP)+EPSDP)
+              SOURCE = SIGN(1.0E0,DELTAP)*GSS*FLQ*(1.0E0+ANUC-FLQ)
           ENDIF
 C
           IF(DELTAP.GE.0.0E0 .AND. FE(IE).GE.FLIMIT) SOURCE=0.0E0

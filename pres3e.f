@@ -117,6 +117,9 @@ C     [INPUT:Cavitation]
       INTEGER*4 ICAVI,ICAVI0,NEWCAVI
       REAL*4    FESRC(NE),FLE(NE),FL(NP),SIGMA
       REAL*4    FLEOLD(NE)
+C     DEBUG MONITOR FOR CAVITATION SOURCE (ICAVI=4)
+      REAL*4    DBKMIN,DBKMAX,DBBMAX,DBFMIN,DBBSUM
+      INTEGER*4 DBNNAN,DBNNEG,IEDB,IEKMAX
  
 CCC [INPUT/OUTPUT]
       REAL*4    PE(NE)
@@ -633,22 +636,59 @@ C
                       B(IE)=B(IE)+FESRC(IE)/DT
                       FESRC(IE)=0.0E0 
               ELSE IF(ICAVI.EQ.4) THEN
-C                 SECANT COEFFICIENT K=S/DP (>=0). |DP| IS BOUNDED BELOW
-C                 BY 1.0E-3 INSTEAD OF DROPPING S, SO THAT THE SOURCE
-C                 IN THE PRESSURE EQ. IS CONTINUOUS AND CONSISTENT WITH
-C                 THE LIQUID-FRACTION EQ. (LIQUID_SS)
-                  FESRC(IE)=FESRC(IE)
-     *                     /SIGN(MAX(ABS(DELTAP),1.0E-3),DELTAP)
-                  B(IE)=B(IE)+0.5E0*FESRC(IE)*SIGMA/DT
-C                 ADD IMPLICIT SOURCE K/DT TO JACOBI SCALING PG
-C                 (LAPLACIAN DIAGONAL IS -PG, SOURCE TERM IS -K/DT*P)
-                  IF(LEFIX(IE).NE.1) PG(IE)=PG(IE)+FESRC(IE)/DT
+C                 K=S/DP (>=0). LIQUID_SS USES S ~ DP/SQRT(|DP|+EPS),
+C                 SO K IS BOUNDED AND CONTINUOUS AT DP=0 (NO CUT-OFF).
+                  IF(ABS(DELTAP).LT.1.0E-12) THEN
+                      FESRC(IE)=0.0E0
+                  ELSE
+                      FESRC(IE)=FESRC(IE)/DELTAP
+                      B(IE)=B(IE)+0.5E0*FESRC(IE)*SIGMA/DT
+                  ENDIF
               ENDIF 
  1570     CONTINUE
           ELSEIF(NEWCAVI .EQ. 1)THEN
               DO IE=1,NE
                   FESRC(IE)=0.0E0
               END DO
+          ENDIF
+C
+C         ---- DEBUG MONITOR (ICAVI=4): K=FESRC, B, FLE ----
+          IF(ICAVI.EQ.4 .AND. NEWCAVI.EQ.0) THEN
+          DBKMIN = 1.0E30
+          DBKMAX =-1.0E30
+          DBBMAX = 0.0E0
+          DBBSUM = 0.0E0
+          DBFMIN = 1.0E30
+          DBNNAN = 0
+          DBNNEG = 0
+          IEKMAX = 0
+          DO 1580 IEDB=1,NE
+              IF(FESRC(IEDB).NE.FESRC(IEDB) .OR.
+     *           B(IEDB).NE.B(IEDB) .OR.
+     *           PE(IEDB).NE.PE(IEDB)) DBNNAN=DBNNAN+1
+              IF(FESRC(IEDB).LT.0.0E0) DBNNEG=DBNNEG+1
+              IF(FESRC(IEDB).GT.DBKMAX) THEN
+                  DBKMAX=FESRC(IEDB)
+                  IEKMAX=IEDB
+              ENDIF
+              DBKMIN=MIN(DBKMIN,FESRC(IEDB))
+              DBBMAX=MAX(DBBMAX,ABS(B(IEDB)))
+              DBBSUM=DBBSUM+0.5E0*FESRC(IEDB)*SIGMA/DT
+              DBFMIN=MIN(DBFMIN,FLE(IEDB))
+ 1580     CONTINUE
+          IF(DBNNAN.GT.0 .OR. DBNNEG.GT.0 .OR.
+     *       ISTEP.LE.3 .OR. MOD(ISTEP,100).EQ.0) THEN
+              WRITE(IUT6,'(A,I8,A,I4,A,2I8,A,1P,2E11.3,A,E11.3,
+     *                     A,E11.3,A,E11.3)')
+     *        ' DBG PRES3E STEP',ISTEP,' IPART',IPART,
+     *        ' NNAN,NNEG',DBNNAN,DBNNEG,
+     *        ' KMIN,KMAX',DBKMIN,DBKMAX,
+     *        ' |B|MAX',DBBMAX,' SUM(KSIG/2DT)',DBBSUM,
+     *        ' FLEMIN',DBFMIN
+              IF(IEKMAX.GE.1) WRITE(IUT6,'(A,I8,1P,3E11.3)')
+     *        ' DBG PRES3E  KMAX AT IE, PE, FLE:',IEKMAX,
+     *        PE(IEKMAX),FLE(IEKMAX),DBKMAX
+          ENDIF
           ENDIF
       ENDIF
 C
